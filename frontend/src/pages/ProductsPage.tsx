@@ -14,6 +14,8 @@ import { useNavigate } from 'react-router-dom';
 export const ProductsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
+  const [sortMode, setSortMode] = useState<'price-asc'|'price-desc'|'newest'|'oldest'>('newest');
+  const [groupBy, setGroupBy] = useState<'none'|'category'>('none');
   const { products, addToCart, loadingProducts, productsError, refreshProducts, categories, loadingCategories, categoriesError } = useData();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -27,8 +29,8 @@ export const ProductsPage: React.FC = () => {
     };
   }, []);
 
-  const filteredProducts = useMemo(() => {
-    let filtered = products;
+  const processedProducts = useMemo(() => {
+    let filtered = products.slice();
 
     // exclude logged-in user's own products from main marketplace view
     if (user) {
@@ -46,8 +48,33 @@ export const ProductsPage: React.FC = () => {
       );
     }
 
+    // Sort
+    filtered.sort((a,b) => {
+      if (sortMode === 'price-asc') return a.price - b.price;
+      if (sortMode === 'price-desc') return b.price - a.price;
+      if (sortMode === 'newest') return new Date(b.createdAt||0).getTime() - new Date(a.createdAt||0).getTime();
+      if (sortMode === 'oldest') return new Date(a.createdAt||0).getTime() - new Date(b.createdAt||0).getTime();
+      return 0;
+    });
+
+    if (groupBy === 'category') {
+      // Group into sections by category; return array with marker objects
+      const groups = new Map<string, typeof filtered>();
+      for (const p of filtered) {
+        const key = p.category || 'Uncategorized';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(p);
+      }
+      // Flatten with headers
+      const flat: any[] = [];
+      for (const [cat, list] of groups.entries()) {
+        flat.push({ __group: true, category: cat, count: list.length });
+        flat.push(...list);
+      }
+      return flat;
+    }
     return filtered;
-  }, [products, selectedCategory, searchQuery, user]);
+  }, [products, selectedCategory, searchQuery, user, sortMode, groupBy]);
 
   const handleAddToCart = (productId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -117,6 +144,44 @@ export const ProductsPage: React.FC = () => {
               </Button>
             ))}
           </div>
+
+          {/* Sort & Group Controls */}
+          <div className="flex flex-wrap gap-4 items-center">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-gray-400">Sort:</span>
+              <select
+                value={sortMode}
+                onChange={(e) => setSortMode(e.target.value as any)}
+                className="bg-[#1B1B1B]/50 border border-gray-700 rounded px-2 py-1 text-gray-200 text-sm focus:outline-none focus:border-[#00BFFF]"
+              >
+                <option value="newest">Newest</option>
+                <option value="oldest">Oldest</option>
+                <option value="price-asc">Price: Low → High</option>
+                <option value="price-desc">Price: High → Low</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-gray-400">Group:</span>
+              <select
+                value={groupBy}
+                onChange={(e) => setGroupBy(e.target.value as any)}
+                className="bg-[#1B1B1B]/50 border border-gray-700 rounded px-2 py-1 text-gray-200 text-sm focus:outline-none focus:border-[#00BFFF]"
+              >
+                <option value="none">None</option>
+                <option value="category">Category</option>
+              </select>
+            </div>
+            {(searchQuery || selectedCategory !== 'All Categories' || sortMode !== 'newest' || groupBy !== 'none') && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setSearchQuery(''); setSelectedCategory('All Categories'); setSortMode('newest'); setGroupBy('none'); }}
+                className="border-gray-700 text-gray-300 hover:bg-[#1B1B1B]"
+              >
+                Reset
+              </Button>
+            )}
+          </div>
         </div>
       </section>
 
@@ -134,7 +199,7 @@ export const ProductsPage: React.FC = () => {
             <Button variant="outline" onClick={refreshProducts}>Retry</Button>
           </div>
         )}
-        {!loadingProducts && !productsError && filteredProducts.length === 0 ? (
+  {!loadingProducts && !productsError && processedProducts.filter(p => !p.__group).length === 0 ? (
           <div className="text-center py-16">
             <div className="max-w-md mx-auto animate-fade-in">
               <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted/50 flex items-center justify-center">
@@ -152,7 +217,18 @@ export const ProductsPage: React.FC = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredProducts.map((product, index) => (
+            {processedProducts.map((product: any, index: number) => (
+              product.__group ? (
+                <div key={`group-${product.category}-${index}`} className="col-span-full mt-8 mb-2">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-light tracking-wide text-gray-200 flex items-center gap-2">
+                      <span className="px-3 py-1 rounded-full bg-[#1B1B1B]/70 border border-gray-700 text-[#00BFFF]">{product.category}</span>
+                      <span className="text-xs text-gray-500">{product.count} item{product.count !== 1 ? 's' : ''}</span>
+                    </h2>
+                    <div className="h-px flex-1 ml-4 bg-gradient-to-r from-[#00BFFF]/40 to-transparent" />
+                  </div>
+                </div>
+              ) : (
               <Card
                 key={product.id}
                 className="group cursor-pointer overflow-hidden bg-[#1B1B1B]/80 backdrop-blur-sm border border-gray-700 hover:shadow-lg hover:shadow-[#00BFFF]/20 transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] animate-fade-in hover-glow"
@@ -215,6 +291,7 @@ export const ProductsPage: React.FC = () => {
                   </div>
                 </CardContent>
               </Card>
+              )
             ))}
           </div>
         )}

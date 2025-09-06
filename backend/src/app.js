@@ -16,11 +16,21 @@ const originList = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://loc
   .split(',')
   .map(o => o.trim())
   .filter(Boolean);
+
+// Helper: detect private LAN origins (when enabled)
+const privateLanRegex = /^https?:\/\/(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}|127\.0\.0\.1|localhost)(?::\d+)?$/;
+
+const allowLan = process.env.ALLOW_LAN === '1';
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin || originList.includes(origin)) return cb(null, true);
+    // Allow same-origin or server-to-server (no origin), listed origins, and local LAN patterns in dev.
+    const dev = process.env.NODE_ENV !== 'production';
+    const lanOk = allowLan && dev && privateLanRegex.test(origin || '');
+    if (!origin || originList.includes(origin) || lanOk) {
+      return cb(null, true);
+    }
     if (process.env.DEBUG_ROUTES === '1') {
-      console.warn('[CORS_BLOCK]', origin, 'not in', originList);
+      console.warn('[CORS_BLOCK]', origin, 'not in', originList, 'LAN_ENABLED?', allowLan, 'LAN_MATCH?', lanOk);
     }
     cb(new Error('Not allowed by CORS'));
   },
@@ -28,8 +38,13 @@ app.use(cors({
 }));
 // Basic request logger (before routes) for debugging path issues
 app.use((req, res, next) => {
-  if (process.env.DEBUG_ROUTES === '1') {
+  const debugRoutes = process.env.DEBUG_ROUTES === '1';
+  const debugProducts = process.env.DEBUG_PRODUCTS === '1';
+  if (debugRoutes) {
     console.log('[REQ]', req.method, req.originalUrl);
+  }
+  if (debugProducts && /\/api\/products/.test(req.originalUrl)) {
+    console.log('[PRODUCT_REQ]', req.method, req.originalUrl, 'ct=', req.headers['content-type']);
   }
   next();
 });

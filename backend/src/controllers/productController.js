@@ -2,11 +2,21 @@ import Product from '../models/Product.js';
 import mongoose from 'mongoose';
 
 export async function createProduct(req, res) {
-  const { title, description, category, price, image, images, condition, tags, quantity } = req.body;
+  const { title, description, category, price, images, condition, tags, quantity, details, extras, workingCondition } = req.body;
+  if (process.env.DEBUG_PRODUCTS === '1') {
+    console.log('[CREATE_PRODUCT_ATTEMPT]', {
+      method: req.method,
+      path: req.originalUrl,
+      user: req.user?._id?.toString() || null,
+      bodyKeys: Object.keys(req.body || {}),
+      contentType: req.headers['content-type'],
+      authHeader: req.headers['authorization'] ? 'present' : 'missing'
+    });
+  }
   if (!title || !description || !category || price == null) {
     return res.status(400).json({ message: 'Missing required fields' });
   }
-  const normalizedImages = Array.isArray(images) ? images : (image ? [image] : []);
+  const normalizedImages = Array.isArray(images) ? images : [];
   const q = Math.max(0, Number(quantity ?? 1));
   try {
     const existing = await Product.findOne({ seller: req.user._id, title, category, price, condition: condition || { $exists: false } });
@@ -20,6 +30,14 @@ export async function createProduct(req, res) {
         const mergedTags = new Set([...(existing.tags || []), ...tags]);
         existing.tags = Array.from(mergedTags);
       }
+      // Merge details/extras only if provided
+      if (details && typeof details === 'object') {
+        existing.details = { ...(existing.details || {}), ...details };
+      }
+      if (extras && typeof extras === 'object') {
+        existing.extras = { ...(existing.extras || {}), ...extras };
+      }
+      if (workingCondition) existing.workingCondition = workingCondition;
       await existing.save();
       return res.status(200).json(existing);
     }
@@ -29,10 +47,12 @@ export async function createProduct(req, res) {
       category,
       price,
       quantity: q,
-      image,
       images: normalizedImages,
       condition,
       tags,
+      details: details || {},
+      extras: extras || {},
+      workingCondition: workingCondition || undefined,
       seller: req.user._id
     });
   // populate seller minimal fields for client convenience
@@ -81,7 +101,7 @@ export async function updateProduct(req, res) {
   if (product.seller.toString() !== req.user._id.toString()) {
     return res.status(403).json({ message: 'Not authorized' });
   }
-  const updatable = ['title', 'description', 'category', 'price', 'image', 'images', 'condition', 'tags', 'quantity'];
+  const updatable = ['title', 'description', 'category', 'price', 'images', 'condition', 'tags', 'quantity', 'details', 'extras', 'workingCondition'];
   updatable.forEach((field) => {
     if (req.body[field] !== undefined) product[field] = req.body[field];
   });

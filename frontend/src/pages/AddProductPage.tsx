@@ -120,7 +120,7 @@ export const AddProductPage: React.FC = () => {
 
     try {
       if (isEdit && productId) {
-        updateProduct(productId, {
+        await updateProduct(productId, {
           title: title.trim(),
           description: description.trim(),
           category,
@@ -144,7 +144,12 @@ export const AddProductPage: React.FC = () => {
           description: "Product updated successfully!",
         });
       } else {
-        addProduct({
+        if (import.meta.env.VITE_DEBUG === '1') {
+          console.debug('[ADD_PRODUCT_SUBMIT]', {
+            title: title.trim(), category, price: priceNumber, qty: quantityNumber, imgs: images.length
+          });
+        }
+        const ok = await addProduct({
           title: title.trim(),
           description: description.trim(),
           category,
@@ -152,7 +157,29 @@ export const AddProductPage: React.FC = () => {
           images: images && images.length ? images : undefined,
           condition: condition as any,
           quantity: quantityNumber,
+          details: {
+            yearOfManufacture: yearNumber,
+            brand: brand.trim() || undefined,
+            model: model.trim() || undefined,
+            dimensions: dimensions.trim() || undefined,
+            weight: weight.trim() || undefined,
+            material: material.trim() || undefined,
+            color: color.trim() || undefined,
+          },
+          extras: {
+            originalPackaging,
+            manualIncluded,
+          },
+          workingCondition: workingConditionDescription.trim() || undefined,
         } as any);
+        if (!ok) {
+          toast({
+            title: 'Error',
+            description: 'Failed to add product (network or validation).',
+            variant: 'destructive'
+          });
+          return;
+        }
         toast({
           title: "Success",
           description: "Product added successfully!",
