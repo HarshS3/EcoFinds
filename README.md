@@ -294,14 +294,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Multi-language Support**: Internationalization
 - **Advanced Search**: AI-powered search with image recognition
 
-## 📞 Contact
-
-For questions, suggestions, or collaboration opportunities:
-
-- **Email**: team@ecofinds.com
-- **GitHub**: [EcoFinds Repository](https://github.com/your-username/ecofinds)
-- **LinkedIn**: [Team Profile](https://linkedin.com/company/ecofinds)
-
 ---
 
 **Made with ❤️ for a sustainable future** 🌍
