@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { Header } from '@/components/Layout/Header';
 import { SplineHero } from '@/components/ui/spline-hero';
-import { useData, categories } from '@/contexts/DataContext';
+import { useData } from '@/contexts/DataContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,7 +14,8 @@ import { useNavigate } from 'react-router-dom';
 export const ProductsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
-  const { products, addToCart } = useData();
+  const { products, addToCart, loadingProducts, productsError, refreshProducts, categories, loadingCategories, categoriesError } = useData();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -28,6 +30,11 @@ export const ProductsPage: React.FC = () => {
   const filteredProducts = useMemo(() => {
     let filtered = products;
 
+    // exclude logged-in user's own products from main marketplace view
+    if (user) {
+      filtered = filtered.filter(p => p.ownerUserId !== user.id);
+    }
+
     if (selectedCategory !== 'All Categories') {
       filtered = filtered.filter(product => product.category === selectedCategory);
     }
@@ -40,7 +47,7 @@ export const ProductsPage: React.FC = () => {
     }
 
     return filtered;
-  }, [products, selectedCategory, searchQuery]);
+  }, [products, selectedCategory, searchQuery, user]);
 
   const handleAddToCart = (productId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -65,12 +72,7 @@ export const ProductsPage: React.FC = () => {
         <SplineHero className="h-full" />
         <div className="absolute inset-0 flex items-center justify-center z-20">
           <div className="text-center text-white animate-fade-in">
-            <h1 className="text-4xl md:text-6xl font-light tracking-tight mb-4">
-              thrift earth
-            </h1>
-            <p className="text-lg md:text-xl opacity-90 max-w-md mx-auto">
-              Discover unique treasures from around the globe
-            </p>
+            
           </div>
         </div>
         {/* Smooth gradient transition */}
@@ -93,7 +95,13 @@ export const ProductsPage: React.FC = () => {
 
           {/* Category Filters */}
           <div className="flex flex-wrap gap-2">
-            {categories.map((category) => (
+            {loadingCategories && (
+              <span className="text-xs text-muted-foreground">Loading categories...</span>
+            )}
+            {!loadingCategories && categoriesError && (
+              <span className="text-xs text-red-400">{categoriesError}</span>
+            )}
+            {!loadingCategories && categories.map((category) => (
               <Button
                 key={category}
                 variant={selectedCategory === category ? "default" : "outline"}
@@ -114,7 +122,19 @@ export const ProductsPage: React.FC = () => {
 
       {/* Products Grid */}
       <section className="container mx-auto px-4 pb-16">
-        {filteredProducts.length === 0 ? (
+        {loadingProducts && (
+          <div className="text-center py-16 animate-fade-in">
+            <div className="w-12 h-12 mx-auto mb-4 border-4 border-[#00BFFF] border-t-transparent rounded-full animate-spin" />
+            <p className="text-muted-foreground">Loading products...</p>
+          </div>
+        )}
+        {!loadingProducts && productsError && (
+          <div className="text-center py-16">
+            <p className="text-red-400 mb-4">{productsError}</p>
+            <Button variant="outline" onClick={refreshProducts}>Retry</Button>
+          </div>
+        )}
+        {!loadingProducts && !productsError && filteredProducts.length === 0 ? (
           <div className="text-center py-16">
             <div className="max-w-md mx-auto animate-fade-in">
               <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted/50 flex items-center justify-center">

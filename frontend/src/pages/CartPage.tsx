@@ -37,11 +37,20 @@ export const CartPage: React.FC = () => {
 
   const handlePaymentSuccess = () => {
     if (cartItems.length === 0) return;
-    
-    checkout();
+    checkout('razorpay');
     toast({
-      title: "Order placed!",
-      description: "Your order has been processed successfully",
+      title: 'Order placed!',
+      description: 'Your payment was successful and order is placed.'
+    });
+    navigate('/profile');
+  };
+
+  const handlePayLater = () => {
+    if (cartItems.length === 0) return;
+    checkout('pay_later');
+    toast({
+      title: 'Order created (Pay Later)',
+      description: 'You chose Pay Later. Complete payment later from your orders section.'
     });
     navigate('/profile');
   };
@@ -174,14 +183,24 @@ export const CartPage: React.FC = () => {
                     </div>
                   </div>
                   
-                  <RazorpayCheckout
-                    amount={totalPrice}
-                    onSuccess={handlePaymentSuccess}
-                    disabled={cartItems.length === 0}
-                    className="w-full bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-primary-foreground"
-                  >
-                    Pay ₹{totalPrice.toFixed(2)}
-                  </RazorpayCheckout>
+                  <div className="space-y-3">
+                    <Button
+                      onClick={handlePayLater}
+                      disabled={cartItems.length === 0}
+                      variant="outline"
+                      className="w-full border-dashed"
+                    >
+                      Pay Later
+                    </Button>
+                    <RazorpayCheckout
+                      amount={totalPrice}
+                      onSuccess={handlePaymentSuccess}
+                      disabled={cartItems.length === 0}
+                      className="w-full bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-primary-foreground"
+                    >
+                      Pay Now (Razorpay) ₹{totalPrice.toFixed(2)}
+                    </RazorpayCheckout>
+                  </div>
                   
                   <Button
                     variant="outline"

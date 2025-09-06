@@ -12,6 +12,7 @@ import { MyListingsPage } from "./pages/MyListingsPage";
 import { CartPage } from "./pages/CartPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { ProductDetailPage } from "./pages/ProductDetailPage";
+import DebugPanel from "./components/DebugPanel";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -82,6 +83,8 @@ const App = () => (
               } />
               <Route path="*" element={<NotFound />} />
             </Routes>
+              {/* Debug panel shown only when VITE_DEBUG=1 (panel itself checks) */}
+              <DebugPanel />
           </DataProvider>
         </AuthProvider>
       </BrowserRouter>

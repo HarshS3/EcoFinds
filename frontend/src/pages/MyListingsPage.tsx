@@ -2,6 +2,7 @@ import React from 'react';
 import { Header } from '@/components/Layout/Header';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
+import { api } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,23 +12,53 @@ import { useToast } from '@/hooks/use-toast';
 
 export const MyListingsPage: React.FC = () => {
   const { user } = useAuth();
-  const { getUserProducts, deleteProduct } = useData();
+  const { deleteProduct } = useData();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [userProducts, setUserProducts] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState<boolean>(false);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const userProducts = user ? getUserProducts(user.id) : [];
+  const fetchUserProducts = React.useCallback(async () => {
+    if (!user) return;
+    const sellerId = (user as any).id || (user as any)._id;
+    if (!sellerId) return; // avoid calling with undefined
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.get(`/api/products?seller=${sellerId}`);
+      setUserProducts(res.data || []);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e.message || 'Failed to load listings');
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
+  React.useEffect(() => {
+    fetchUserProducts();
+  }, [fetchUserProducts]);
 
   const handleEdit = (productId: string) => {
     navigate(`/add-product/${productId}`);
   };
 
-  const handleDelete = (productId: string, productTitle: string) => {
+  const handleDelete = async (productId: string, productTitle: string) => {
     if (window.confirm(`Are you sure you want to delete "${productTitle}"?`)) {
-      deleteProduct(productId);
-      toast({
-        title: "Success",
-        description: "Product deleted successfully",
-      });
+      const ok = await deleteProduct(productId);
+      if (ok) {
+        setUserProducts(prev => prev.filter(p => p._id === productId ? false : true));
+        toast({
+          title: 'Success',
+          description: 'Product deleted successfully',
+        });
+      } else {
+        toast({
+          title: 'Error',
+          variant: 'destructive',
+          description: 'Failed to delete product',
+        });
+      }
     }
   };
 
@@ -54,7 +85,19 @@ export const MyListingsPage: React.FC = () => {
         </div>
 
         {/* Products Grid */}
-        {userProducts.length === 0 ? (
+        {loading && (
+          <div className="text-center py-16 animate-fade-in">
+            <div className="w-12 h-12 mx-auto mb-4 border-4 border-[#00BFFF] border-t-transparent rounded-full animate-spin" />
+            <p className="text-muted-foreground">Loading your listings...</p>
+          </div>
+        )}
+        {!loading && error && (
+          <div className="text-center py-16 animate-fade-in">
+            <p className="text-red-400 mb-4">{error}</p>
+            <Button variant="outline" onClick={fetchUserProducts}>Retry</Button>
+          </div>
+        )}
+        {!loading && !error && userProducts.length === 0 ? (
           <div className="text-center py-16 animate-fade-in">
             <div className="max-w-md mx-auto">
               <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted/50 flex items-center justify-center">
@@ -75,23 +118,22 @@ export const MyListingsPage: React.FC = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-4 gap-x-6">
-            {userProducts.map((product, index) => (
+            {userProducts.map((product: any, index) => (
               <Card
-                key={product.id}
-                className="group overflow-hidden bg-[#1B1B1B]/80 backdrop-blur-sm border border-gray-700 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 animate-fade-in"
+                key={product._id || product.id}
+                className="group overflow-hidden bg-[#1B1B1B]/80 backdrop-blur-sm border border-gray-700 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 animate-fade-in cursor-pointer"
                 style={{ animationDelay: `${index * 100}ms` }}
+                onClick={() => navigate(`/product/${product._id || product.id}`)}
               >
                 <CardContent className="p-0">
                   {/* Product Image */}
                   <div className="relative h-48 bg-gradient-to-br from-gray-800/20 to-gray-800/40 flex items-center justify-center overflow-hidden">
-                    {product.images && product.images.length > 0 ? (
-                      <img
-                        src={product.images[0]}
-                        alt={product.title}
-                        className="w-full h-full object-cover"
-                      />
+                    {Array.isArray(product.images) && product.images.length > 0 ? (
+                      <img src={product.images[0]} alt={product.title} className="w-full h-full object-cover" />
+                    ) : product.image ? (
+                      <img src={product.image} alt={product.title} className="w-full h-full object-cover" />
                     ) : (
-                      <div className="text-gray-400 text-sm">Product Image</div>
+                      <div className="text-gray-400 text-sm">No Image</div>
                     )}
                   </div>
                   
@@ -112,9 +154,9 @@ export const MyListingsPage: React.FC = () => {
                     </div>
                     
                     <div className="flex items-center gap-2 text-xs text-gray-400">
-                      <span>Qty: {product.quantity}</span>
+                      <span>ID: {(product._id || product.id).toString().slice(-6)}</span>
                       <span>•</span>
-                      <span className="capitalize">{product.condition}</span>
+                      <span className="capitalize">{product.condition || 'n/a'}</span>
                     </div>
                     
                     <p className="text-gray-300 text-sm line-clamp-2">
@@ -122,14 +164,12 @@ export const MyListingsPage: React.FC = () => {
                     </p>
                     
                     <div className="flex items-center justify-between">
-                      <span className="text-lg font-semibold text-[#00BFFF]">
-                        ₹{product.price.toFixed(2)}
-                      </span>
+            <span className="text-lg font-semibold text-[#00BFFF]">₹{Number(product.price).toFixed(2)}</span>
                       <div className="flex space-x-2">
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleEdit(product.id)}
+                          onClick={(e) => { e.stopPropagation(); handleEdit(product._id || product.id); }}
                           className="h-8 w-8 p-0 border-gray-600 text-gray-300 hover:bg-gray-700"
                         >
                           <Edit className="h-3 w-3" />
@@ -137,7 +177,7 @@ export const MyListingsPage: React.FC = () => {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleDelete(product.id, product.title)}
+                          onClick={(e) => { e.stopPropagation(); handleDelete(product._id || product.id, product.title); }}
                           className="h-8 w-8 p-0 border-red-600 text-red-400 hover:bg-red-600 hover:text-white"
                         >
                           <Trash2 className="h-3 w-3" />
@@ -146,7 +186,7 @@ export const MyListingsPage: React.FC = () => {
                     </div>
                     
                     <div className="text-xs text-gray-400">
-                      Listed {new Date(product.createdAt).toLocaleDateString()}
+                      Listed {product.createdAt ? new Date(product.createdAt).toLocaleDateString() : ''}
                     </div>
                   </div>
                 </CardContent>

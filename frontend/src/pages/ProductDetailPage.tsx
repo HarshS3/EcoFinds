@@ -211,8 +211,19 @@ export const ProductDetailPage: React.FC = () => {
                     </div>
                     <div className="flex items-center space-x-3">
                       <User className="h-4 w-4 text-gray-400" />
-                      <span className="text-gray-400">Seller ID:</span>
-                      <span className="text-white">#{product.ownerUserId.slice(-6).toUpperCase()}</span>
+                      <span className="text-gray-400">Seller:</span>
+                      <span className="text-white">{(product as any).sellerName || 'Unknown Seller'}</span>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <User className="h-4 w-4 text-gray-400" />
+                      <span className="text-gray-400">Seller:</span>
+                      <span className="text-white flex items-center space-x-2">
+                        {product.sellerAvatar && (
+                          <img src={product.sellerAvatar} alt={product.sellerName || 'Seller'} className="h-6 w-6 rounded-full object-cover" />
+                        )}
+                        <span>{product.sellerName || 'Unknown'}</span>
+                        <span className="text-xs text-gray-500">(#{product.ownerUserId.slice(-6).toUpperCase()})</span>
+                      </span>
                     </div>
                     {product.updatedAt !== product.createdAt && (
                       <div className="flex items-center space-x-3">

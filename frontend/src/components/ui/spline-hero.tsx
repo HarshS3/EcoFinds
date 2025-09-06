@@ -9,7 +9,7 @@ export const SplineHero: React.FC<SplineHeroProps> = ({ className = "" }) => {
     <div className={`relative w-full ${className}`}>
       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/10 to-background/80 z-10 pointer-events-none" />
       <iframe 
-        src='https://my.spline.design/claritystream-sjdbAS7kEaOvpJp4Fkzz81Gb/' 
+        src='https://my.spline.design/claritystream-tn9rzz5qkhGz0GqrLtefiGoO/' 
         frameBorder='0' 
         width='100%' 
         height='100%'

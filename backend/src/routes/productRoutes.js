@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createProduct, getProducts, getProduct, updateProduct, deleteProduct } from '../controllers/productController.js';
+import { createProduct, getProducts, getProduct, updateProduct, deleteProduct, getCategories } from '../controllers/productController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { body } from 'express-validator';
 import { validateRequest } from '../middleware/validateRequest.js';
@@ -18,6 +18,7 @@ router.route('/')
     validateRequest,
     createProduct
   );
+router.get('/categories/list', getCategories);
 router.route('/:id')
   .get(getProduct)
   .put(protect, updateProduct)

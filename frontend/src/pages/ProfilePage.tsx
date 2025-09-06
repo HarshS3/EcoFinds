@@ -16,23 +16,23 @@ export const ProfilePage: React.FC = () => {
   const { toast } = useToast();
   
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  // Local optional profile fields not yet persisted on backend (phone, profileImage)
   const [editForm, setEditForm] = useState({
-    username: user?.username || '',
-    email: user?.email || '',
-    phone: user?.phone || '',
-    profileImage: user?.profileImage || ''
+    name: (user as any)?.name || '',
+    email: (user as any)?.email || '',
+    phone: '',
+    profileImage: ''
   });
 
-  const userPurchases = purchases.filter(purchase => purchase.userId === user?.id);
+  const userPurchases = purchases.filter(purchase => purchase.userId === ((user as any)?.id || (user as any)?._id));
 
   const handleSaveProfile = () => {
     if (editForm.username.trim() && editForm.email.trim()) {
       updateProfile({
-        username: editForm.username.trim(),
-        email: editForm.email.trim(),
-        phone: editForm.phone.trim() || undefined,
-        profileImage: editForm.profileImage.trim() || undefined
-      });
+        name: editForm.name.trim(),
+        email: editForm.email.trim()
+        // phone/profileImage are only client-side placeholders for now
+      } as any);
       toast({
         title: "Success",
         description: "Profile updated successfully",
@@ -43,10 +43,10 @@ export const ProfilePage: React.FC = () => {
 
   const handleCancelEdit = () => {
     setEditForm({
-      username: user?.username || '',
-      email: user?.email || '',
-      phone: user?.phone || '',
-      profileImage: user?.profileImage || ''
+      name: (user as any)?.name || '',
+      email: (user as any)?.email || '',
+      phone: '',
+      profileImage: ''
     });
     setIsEditingProfile(false);
   };
@@ -100,9 +100,9 @@ export const ProfilePage: React.FC = () => {
                 <div className="flex flex-col items-center space-y-4">
                   <div className="relative">
                     <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center overflow-hidden">
-                      {user?.profileImage ? (
+                      {editForm.profileImage ? (
                         <img
-                          src={user.profileImage}
+                          src={editForm.profileImage}
                           alt="Profile"
                           className="w-full h-full object-cover"
                         />
@@ -134,11 +134,11 @@ export const ProfilePage: React.FC = () => {
                   {isEditingProfile ? (
                     <div className="space-y-4">
                       <div>
-                        <Label htmlFor="username">Username</Label>
+                        <Label htmlFor="name">Name</Label>
                         <Input
-                          id="username"
-                          value={editForm.username}
-                          onChange={(e) => setEditForm(prev => ({ ...prev, username: e.target.value }))}
+                          id="name"
+                          value={editForm.name}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
                           className="mt-1"
                         />
                       </div>
@@ -178,8 +178,8 @@ export const ProfilePage: React.FC = () => {
                     <div className="space-y-3">
                       <div className="flex items-center space-x-3">
                         <User className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-muted-foreground">Username:</span>
-                        <span className="font-medium">{user?.username}</span>
+                        <span className="text-muted-foreground">Name:</span>
+                        <span className="font-medium">{(user as any)?.name}</span>
                       </div>
                       <div className="flex items-center space-x-3">
                         <Mail className="h-4 w-4 text-muted-foreground" />
@@ -189,7 +189,7 @@ export const ProfilePage: React.FC = () => {
                       <div className="flex items-center space-x-3">
                         <Phone className="h-4 w-4 text-muted-foreground" />
                         <span className="text-muted-foreground">Phone:</span>
-                        <span className="font-medium">{user?.phone || 'Not provided'}</span>
+                        <span className="font-medium">Not provided</span>
                       </div>
                       <div className="flex items-center space-x-3">
                         <Package className="h-4 w-4 text-muted-foreground" />
@@ -241,10 +241,17 @@ export const ProfilePage: React.FC = () => {
                           </p>
                         </div>
                         <div className="text-right">
-                          <Badge variant="secondary">Completed</Badge>
-                          <p className="text-lg font-semibold text-primary mt-1">
-                            ${purchase.total.toFixed(2)}
-                          </p>
+                          <div className="flex flex-col items-end">
+                            <Badge variant={purchase.paymentStatus === 'paid' ? 'secondary' : 'outline'}>
+                              {purchase.paymentStatus === 'paid' ? 'Paid' : 'Pending'}
+                            </Badge>
+                            <span className="text-[10px] uppercase tracking-wide text-muted-foreground mt-1">
+                              {purchase.paymentMethod.replace('_', ' ')}
+                            </span>
+                            <p className="text-lg font-semibold text-primary mt-1">
+                              ₹{purchase.total.toFixed(2)}
+                            </p>
+                          </div>
                         </div>
                       </div>
                       
@@ -259,7 +266,7 @@ export const ProfilePage: React.FC = () => {
                                 {item.product?.title}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                Quantity: {item.quantity} × ${item.product?.price.toFixed(2)}
+                                Quantity: {item.quantity} × ₹{item.product?.price.toFixed(2)}
                               </p>
                             </div>
                             <Badge variant="outline" className="text-xs">

@@ -1,15 +1,24 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { api } from '@/api/client';
+import { useAuth } from '@/contexts/AuthContext';
 
+// Unified Product interface used by UI (adapts backend product shape)
 export interface Product {
-  id: string;
-  ownerUserId: string;
+  id: string;                 // maps backend _id
+  ownerUserId: string;        // maps backend seller
+  sellerName?: string;
+  sellerAvatar?: string | null;
   title: string;
   description: string;
   category: string;
   price: number;
-  images: string[];
-  quantity: number;
-  condition: 'New' | 'Like New' | 'Good' | 'Used' | 'Heavily Used';
+  images: string[];           // built from backend 'image' field
+  quantity: number;           // placeholder (backend has no stock field)
+  condition?: string;         // backend uses lowercase values
+  tags?: string[];
+  createdAt?: string;
+  updatedAt?: string;
+  // Legacy optional fields retained for UI compatibility
   yearOfManufacture?: number;
   brand?: string;
   model?: string;
@@ -17,11 +26,9 @@ export interface Product {
   weight?: string;
   material?: string;
   color?: string;
-  originalPackaging: boolean;
-  manualIncluded: boolean;
+  originalPackaging?: boolean;
+  manualIncluded?: boolean;
   workingConditionDescription?: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface CartItem {
@@ -40,264 +47,282 @@ export interface Purchase {
   items: CartItem[];
   date: string;
   total: number;
+  paymentMethod: 'pay_later' | 'razorpay';
+  paymentStatus: 'pending' | 'paid';
 }
 
 interface DataContextType {
   products: Product[];
+  loadingProducts: boolean;
+  productsError: string | null;
   cart: Cart | null;
+  loadingCart?: boolean;
+  cartError?: string | null;
   purchases: Purchase[];
-  addProduct: (product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => void;
-  updateProduct: (id: string, updates: Partial<Product>) => void;
-  deleteProduct: (id: string) => void;
-  addToCart: (productId: string, quantity?: number) => void;
+  refreshProducts: () => Promise<void>;
+  addProduct: (product: { title: string; description: string; category: string; price: number; images?: string[]; image?: string; condition?: string; tags?: string[] }) => Promise<boolean>;
+  updateProduct: (id: string, updates: Partial<Product>) => Promise<boolean>;
+  deleteProduct: (id: string) => Promise<boolean>;
+  addToCart: (productId: string, quantity?: number) => void; // still local for now
   removeFromCart: (productId: string) => void;
   updateCartQuantity: (productId: string, quantity: number) => void;
   clearCart: () => void;
-  checkout: () => void;
+  checkout: (paymentMethod?: 'pay_later' | 'razorpay') => void;
   getProductsByCategory: (category: string) => Product[];
   searchProducts: (query: string) => Product[];
   getUserProducts: (userId: string) => Product[];
+  categories: string[];
+  loadingCategories: boolean;
+  categoriesError: string | null;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
-export const useData = () => {
+// Function declaration for stable React Fast Refresh boundary
+export function useData() {
   const context = useContext(DataContext);
   if (context === undefined) {
     throw new Error('useData must be used within a DataProvider');
   }
   return context;
-};
+}
 
-export const categories = [
-  'All Categories',
-  'Electronics',
-  'Clothing',
-  'Home & Garden',
-  'Books',
-  'Sports',
-  'Toys',
-  'Automotive',
-  'Beauty',
-  'Health'
-];
+// Static categories removed; now fetched from backend only.
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [products, setProducts] = useState<Product[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState<boolean>(true);
+  const [productsError, setProductsError] = useState<string | null>(null);
   const [cart, setCart] = useState<Cart | null>(null);
+  const [loadingCart, setLoadingCart] = useState<boolean>(false);
+  const [cartError, setCartError] = useState<string | null>(null);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [loadingPurchases, setLoadingPurchases] = useState<boolean>(false);
+  const [purchasesError, setPurchasesError] = useState<string | null>(null);
+  const [categories, setCategories] = useState<string[]>(['All Categories']);
+  const [loadingCategories, setLoadingCategories] = useState<boolean>(false);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const { user, isLoading: authLoading } = useAuth();
+
+  // Fetch products from backend
+  const mapBackendProduct = (p: any): Product => ({
+    id: p._id,
+    ownerUserId: (typeof p.seller === 'object' && p.seller?._id) ? p.seller._id : (p.seller || ''),
+    sellerName: (typeof p.seller === 'object' && p.seller?.name) ? p.seller.name : undefined,
+    sellerAvatar: (typeof p.seller === 'object' && p.seller?.avatar) ? p.seller.avatar : null,
+    title: p.title,
+    description: p.description,
+    category: p.category,
+    price: p.price,
+    images: Array.isArray(p.images) && p.images.length > 0 ? p.images : (p.image ? [p.image] : []),
+    quantity: p.quantity ?? 1,
+    condition: p.condition,
+    tags: p.tags,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt
+  });
+
+  const refreshProducts = async () => {
+    setLoadingProducts(true);
+    setProductsError(null);
+    const refreshCategories = async () => {
+      setLoadingCategories(true);
+      setCategoriesError(null);
+      try {
+        const res = await api.get('/api/products/categories/list');
+        const serverCats: string[] = res.data?.categories || [];
+        setCategories(['All Categories', ...serverCats]);
+      } catch (e: any) {
+        setCategoriesError(e?.response?.data?.message || e.message || 'Failed to load categories');
+      } finally {
+        setLoadingCategories(false);
+      }
+    };
+    try {
+      const params: any = {};
+      // Ask backend to exclude this user's products (server-side filtering) – still filtered client-side as fallback
+      if (user) params.excludeSeller = (user as any).id || (user as any)._id;
+      const res = await api.get('/api/products', { params });
+      const list = Array.isArray(res.data) ? res.data : [];
+      refreshCategories();
+      setProducts(list.map(mapBackendProduct));
+    } catch (e: any) {
+      setProductsError(e?.response?.data?.message || e.message || 'Failed to load products');
+    } finally {
+      setLoadingProducts(false);
+    }
+  };
 
   useEffect(() => {
-    // Load data from localStorage
-    const storedProducts = localStorage.getItem('thrift-earth-products');
-    const storedCart = localStorage.getItem('thrift-earth-cart');
-    const storedPurchases = localStorage.getItem('thrift-earth-purchases');
-
-    if (storedProducts) {
-      setProducts(JSON.parse(storedProducts));
-    } else {
-      // Add demo products
-      const demoProducts: Product[] = [
-        {
-          id: "demo-1",
-          ownerUserId: "demo-user",
-          title: "Vintage Leather Jacket",
-          description: "A beautiful vintage leather jacket in excellent condition. Perfect for casual wear.",
-          category: "Clothing",
-          price: 2500,
-          images: ["https://images.unsplash.com/photo-1551028719-00167b16eac5?w=400"],
-          quantity: 1,
-          condition: "Good",
-          yearOfManufacture: 1995,
-          brand: "Vintage Brand",
-          model: "Classic Leather",
-          dimensions: "M (40-42)",
-          weight: "1.2 kg",
-          material: "Genuine Leather",
-          color: "Brown",
-          originalPackaging: false,
-          manualIncluded: false,
-          workingConditionDescription: "The jacket is in good condition with minor wear on the cuffs. All zippers and buttons work perfectly. No tears or major damage.",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        {
-          id: "demo-2", 
-          ownerUserId: "demo-user",
-          title: "Antique Wooden Table",
-          description: "Solid wood dining table with intricate carvings. Great for home decoration.",
-          category: "Home & Garden",
-          price: 8000,
-          images: ["https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?w=400"],
-          quantity: 1,
-          condition: "Used",
-          yearOfManufacture: 1980,
-          brand: "Handcrafted",
-          model: "Victorian Style",
-          dimensions: "120x80x75 cm",
-          weight: "45 kg",
-          material: "Solid Oak Wood",
-          color: "Natural Wood",
-          originalPackaging: false,
-          manualIncluded: false,
-          workingConditionDescription: "This beautiful antique table has been well-maintained. Some minor scratches on the surface but overall excellent condition. Perfect for dining or as a statement piece.",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        {
-          id: "demo-3",
-          ownerUserId: "demo-user", 
-          title: "Classic Literature Collection",
-          description: "Set of 10 classic literature books in good condition. Perfect for book lovers.",
-          category: "Books",
-          price: 1200,
-          images: ["https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=400"],
-          quantity: 10,
-          condition: "Like New",
-          yearOfManufacture: 2020,
-          brand: "Penguin Classics",
-          model: "Hardcover Collection",
-          dimensions: "15x10x25 cm",
-          weight: "3.5 kg",
-          material: "Paper, Cardboard",
-          color: "Various",
-          originalPackaging: true,
-          manualIncluded: true,
-          workingConditionDescription: "Complete set of classic literature books in excellent condition. All books are clean with no markings or damage. Perfect for collectors or literature enthusiasts.",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }
-      ];
-      setProducts(demoProducts);
-      localStorage.setItem('thrift-earth-products', JSON.stringify(demoProducts));
-    }
-    
-    if (storedCart) {
-      setCart(JSON.parse(storedCart));
-    }
-    if (storedPurchases) {
-      setPurchases(JSON.parse(storedPurchases));
-    }
+    refreshProducts();
   }, []);
 
-  const addProduct = (productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const newProduct: Product = {
-      ...productData,
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    const updatedProducts = [...products, newProduct];
-    setProducts(updatedProducts);
-    localStorage.setItem('thrift-earth-products', JSON.stringify(updatedProducts));
-  };
-
-  const updateProduct = (id: string, updates: Partial<Product>) => {
-    const updatedProducts = products.map(product =>
-      product.id === id 
-        ? { ...product, ...updates, updatedAt: new Date().toISOString() }
-        : product
-    );
-    setProducts(updatedProducts);
-    localStorage.setItem('thrift-earth-products', JSON.stringify(updatedProducts));
-  };
-
-  const deleteProduct = (id: string) => {
-    const updatedProducts = products.filter(product => product.id !== id);
-    setProducts(updatedProducts);
-    localStorage.setItem('thrift-earth-products', JSON.stringify(updatedProducts));
-  };
-
-  const addToCart = (productId: string, quantity: number = 1) => {
-    if (!cart) {
-      // Initialize cart if it doesn't exist
-      const currentUser = localStorage.getItem('thrift-earth-user');
-      if (currentUser) {
-        const user = JSON.parse(currentUser);
-        const newCart = { userId: user.id, items: [{ productId, quantity }] };
-        setCart(newCart);
-        localStorage.setItem('thrift-earth-cart', JSON.stringify(newCart));
-        return;
-      }
-      return;
+  // When user state changes (e.g., after login) refresh to exclude their listings from marketplace
+  useEffect(() => {
+    if (user) {
+      refreshProducts();
     }
+  }, [user]);
 
-    const existingItem = cart.items.find(item => item.productId === productId);
-    let updatedItems;
+  // Legacy cart/purchase from localStorage kept (can migrate later)
+  // Legacy local cart fallback (first load) - will be overwritten by server fetch
+  useEffect(() => {
+    const storedCart = localStorage.getItem('thrift-earth-cart');
+    if (storedCart && !cart) setCart(JSON.parse(storedCart));
+  }, [cart]);
 
-    if (existingItem) {
-      updatedItems = cart.items.map(item =>
-        item.productId === productId
-          ? { ...item, quantity: item.quantity + quantity }
-          : item
-      );
-    } else {
-      updatedItems = [...cart.items, { productId, quantity }];
+  const fetchPurchaseHistory = async () => {
+    if (!user) return;
+    setLoadingPurchases(true);
+    setPurchasesError(null);
+    try {
+      const res = await api.get('/api/orders/history');
+      const orders = res.data?.orders || [];
+      const mapped: Purchase[] = orders.map((o: any) => ({
+        id: o._id,
+        userId: o.user,
+        items: o.items.map((it: any) => ({ productId: it.product?._id || it.product, quantity: it.quantity })),
+        date: o.createdAt,
+        total: o.total,
+        paymentMethod: o.paymentMethod || 'razorpay',
+        paymentStatus: o.paymentStatus || 'paid'
+      }));
+      setPurchases(mapped);
+    } catch (e: any) {
+      setPurchasesError(e?.response?.data?.message || e.message || 'Failed to load purchase history');
+    } finally {
+      setLoadingPurchases(false);
     }
-
-    const updatedCart = { ...cart, items: updatedItems };
-    setCart(updatedCart);
-    localStorage.setItem('thrift-earth-cart', JSON.stringify(updatedCart));
+  };
+  
+  const fetchCart = async () => {
+    if (!user) return;
+    setLoadingCart(true);
+    setCartError(null);
+    try {
+      const res = await api.get('/api/cart');
+      const serverCart = res.data?.cart || [];
+      const mapped: Cart = {
+        userId: (user as any).id || (user as any)._id,
+        items: serverCart.map((c: any) => ({ productId: c.product?._id || c.product, quantity: c.quantity }))
+      };
+      setCart(mapped);
+      localStorage.setItem('thrift-earth-cart', JSON.stringify(mapped));
+    } catch (e: any) {
+      setCartError(e?.response?.data?.message || e.message || 'Failed to load cart');
+    } finally {
+      setLoadingCart(false);
+    }
   };
 
-  const removeFromCart = (productId: string) => {
-    if (!cart) return;
+  // When auth finishes and user is present, fetch cart and purchases
+  useEffect(() => {
+    if (!authLoading && user) {
+      fetchCart();
+      fetchPurchaseHistory();
+    }
+  }, [authLoading, user]);
 
-    const updatedItems = cart.items.filter(item => item.productId !== productId);
-    const updatedCart = { ...cart, items: updatedItems };
-    setCart(updatedCart);
-    localStorage.setItem('thrift-earth-cart', JSON.stringify(updatedCart));
+  const addProduct = async (data: { title: string; description: string; category: string; price: number; images?: string[]; image?: string; condition?: string; tags?: string[]; quantity?: number }) => {
+    try {
+      const payload: any = {
+        title: data.title,
+        description: data.description,
+        category: data.category,
+        price: data.price,
+        condition: data.condition,
+        tags: data.tags
+      };
+      if (data.images && data.images.length) payload.images = data.images;
+      else if (data.image) payload.image = data.image;
+      if (typeof data.quantity === 'number') payload.quantity = data.quantity;
+      const res = await api.post('/api/products', payload);
+      const mapped = mapBackendProduct(res.data);
+      setProducts(prev => [mapped, ...prev]);
+      return true;
+    } catch (e) {
+      return false;
+    }
   };
 
-  const updateCartQuantity = (productId: string, quantity: number) => {
-    if (!cart) return;
+  const updateProduct = async (id: string, updates: Partial<Product>) => {
+    try {
+      const payload: any = { ...updates };
+      if (updates.images) payload.images = updates.images;
+      const res = await api.put(`/api/products/${id}`, payload);
+      const mapped = mapBackendProduct(res.data);
+      setProducts(prev => prev.map(p => p.id === id ? mapped : p));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  };
 
+  const deleteProduct = async (id: string) => {
+    try {
+      await api.delete(`/api/products/${id}`);
+      setProducts(prev => prev.filter(p => p.id !== id));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  const addToCart = async (productId: string, quantity: number = 1) => {
+    try {
+      await api.post('/api/cart/add', { productId, quantity });
+      fetchCart();
+    } catch (e) {
+      // silent for now
+    }
+  };
+
+  const removeFromCart = async (productId: string) => {
+    try {
+      await api.delete(`/api/cart/remove/${productId}`);
+      fetchCart();
+    } catch (e) {}
+  };
+
+  const updateCartQuantity = async (productId: string, quantity: number) => {
+    if (!cart) return;
+    const current = cart.items.find(i => i.productId === productId);
+    if (!current) return;
+    const diff = quantity - current.quantity;
+    if (diff === 0) return;
     if (quantity <= 0) {
       removeFromCart(productId);
       return;
     }
-
-    const updatedItems = cart.items.map(item =>
-      item.productId === productId
-        ? { ...item, quantity }
-        : item
-    );
-
-    const updatedCart = { ...cart, items: updatedItems };
-    setCart(updatedCart);
-    localStorage.setItem('thrift-earth-cart', JSON.stringify(updatedCart));
+    try {
+      if (diff > 0) {
+        await api.post('/api/cart/add', { productId, quantity: diff });
+      } else {
+        await api.patch(`/api/cart/decrease/${productId}`, { quantity: Math.abs(diff) });
+      }
+      fetchCart();
+    } catch (e) {}
   };
 
   const clearCart = () => {
     if (!cart) return;
-
-    const updatedCart = { ...cart, items: [] };
-    setCart(updatedCart);
-    localStorage.setItem('thrift-earth-cart', JSON.stringify(updatedCart));
+    setCart({ ...cart, items: [] });
+    localStorage.setItem('thrift-earth-cart', JSON.stringify({ ...cart, items: [] }));
   };
 
-  const checkout = () => {
+  const checkout = async (paymentMethod: 'pay_later' | 'razorpay' = 'razorpay') => {
     if (!cart || cart.items.length === 0) return;
 
-    const total = cart.items.reduce((sum, item) => {
-      const product = products.find(p => p.id === item.productId);
-      return sum + (product?.price || 0) * item.quantity;
-    }, 0);
-
-    const newPurchase: Purchase = {
-      id: Date.now().toString(),
-      userId: cart.userId,
-      items: [...cart.items],
-      date: new Date().toISOString(),
-      total,
-    };
-
-    const updatedPurchases = [...purchases, newPurchase];
-    setPurchases(updatedPurchases);
-    localStorage.setItem('thrift-earth-purchases', JSON.stringify(updatedPurchases));
-
-    clearCart();
+    try {
+  await api.post('/api/orders/checkout', { paymentMethod });
+      // server clears cart; we mirror that locally
+      clearCart();
+      // refresh history
+      fetchPurchaseHistory();
+  fetchCart();
+    } catch (e) {
+      // swallow for now; could set an error state
+    }
   };
 
   const getProductsByCategory = (category: string) => {
@@ -330,9 +355,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <DataContext.Provider value={{
       products,
-      cart,
+      loadingProducts,
+      productsError,
+      refreshProducts,
+  cart,
+  loadingCart,
+  cartError,
       purchases,
       addProduct,
+        categories,
+        loadingCategories,
+        categoriesError,
       updateProduct,
       deleteProduct,
       addToCart,

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Header } from '@/components/Layout/Header';
 import { useAuth } from '@/contexts/AuthContext';
-import { useData, categories } from '@/contexts/DataContext';
+import { useData } from '@/contexts/DataContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -34,7 +34,7 @@ export const AddProductPage: React.FC = () => {
   const [workingConditionDescription, setWorkingConditionDescription] = useState('');
   
   const { user } = useAuth();
-  const { addProduct, updateProduct, products } = useData();
+  const { addProduct, updateProduct, products, categories, loadingCategories } = useData();
   const navigate = useNavigate();
   const { productId } = useParams();
   const { toast } = useToast();
@@ -145,25 +145,14 @@ export const AddProductPage: React.FC = () => {
         });
       } else {
         addProduct({
-          ownerUserId: user.id,
           title: title.trim(),
           description: description.trim(),
           category,
           price: priceNumber,
-          images,
-          quantity: quantityNumber,
+          images: images && images.length ? images : undefined,
           condition: condition as any,
-          yearOfManufacture: yearNumber,
-          brand: brand.trim() || undefined,
-          model: model.trim() || undefined,
-          dimensions: dimensions.trim() || undefined,
-          weight: weight.trim() || undefined,
-          material: material.trim() || undefined,
-          color: color.trim() || undefined,
-          originalPackaging,
-          manualIncluded,
-          workingConditionDescription: workingConditionDescription.trim() || undefined,
-        });
+          quantity: quantityNumber,
+        } as any);
         toast({
           title: "Success",
           description: "Product added successfully!",
@@ -258,21 +247,26 @@ export const AddProductPage: React.FC = () => {
                       />
                     </div>
 
-                    {/* Category */}
+                    {/* Category (free entry with suggestions) */}
                     <div className="space-y-2">
                       <Label htmlFor="category">Category *</Label>
-                      <Select value={category} onValueChange={setCategory} required>
-                        <SelectTrigger className="px-4 py-2 rounded-md bg-[#1B1B1B] border border-gray-700 text-white">
-                          <SelectValue placeholder="Select a category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {categories.filter(cat => cat !== 'All Categories').map((cat) => (
-                            <SelectItem key={cat} value={cat}>
-                              {cat}
-                            </SelectItem>
+                      <div className="relative">
+                        <Input
+                          id="category"
+                          list="category-suggestions"
+                          placeholder={loadingCategories ? 'Loading categories...' : 'Type or select a category'}
+                          value={category}
+                          onChange={(e) => setCategory(e.target.value)}
+                          required
+                          className="px-4 py-2 rounded-md bg-[#1B1B1B] border border-gray-700 text-white"
+                        />
+                        <datalist id="category-suggestions">
+                          {categories.filter(c => c !== 'All Categories').map(c => (
+                            <option key={c} value={c} />
                           ))}
-                        </SelectContent>
-                      </Select>
+                        </datalist>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Start typing to create a new category or pick an existing one.</p>
                     </div>
 
                     {/* Quantity */}
