@@ -7,6 +7,7 @@ export async function getUserProfile(req, res) {
 }
 
 export async function updateUserProfile(req, res) {
+  // Allow if the authenticated user matches the target id OR is an admin.
   if (req.user._id.toString() !== req.params.id && req.user.role !== 'admin') {
     return res.status(403).json({ message: 'Forbidden' });
   }

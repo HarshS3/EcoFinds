@@ -8,7 +8,7 @@ const productSchema = new mongoose.Schema(
     price: { type: Number, required: true, min: 0 },
     image: { type: String },
     seller: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    condition: { type: String, enum: ['new', 'like new', 'good', 'fair'], default: 'good' },
+    condition: { type: String, enum: ['new', 'like new', 'good', 'fair', 'poor'], default: 'good' },
     tags: [{ type: String }]
   },
   { timestamps: true }

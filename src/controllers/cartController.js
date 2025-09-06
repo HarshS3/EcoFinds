@@ -30,3 +30,18 @@ export async function removeFromCart(req, res) {
   await user.populate('cart.product');
   res.json({ cart: user.cart });
 }
+
+export async function decreaseCartItem(req, res) {
+  const productId = req.params.id;
+  const { quantity = 1 } = req.body; // amount to decrement
+  const user = await User.findById(req.user._id);
+  const item = user.cart.find((c) => c.product.toString() === productId);
+  if (!item) return res.status(404).json({ message: 'Item not in cart' });
+  item.quantity -= quantity;
+  if (item.quantity <= 0) {
+    user.cart = user.cart.filter((c) => c.product.toString() !== productId);
+  }
+  await user.save();
+  await user.populate('cart.product');
+  res.json({ cart: user.cart });
+}
