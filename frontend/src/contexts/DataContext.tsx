@@ -223,7 +223,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [authLoading, user]);
 
-  const addProduct = async (data: { title: string; description: string; category: string; price: number; images?: string[]; image?: string; condition?: string; tags?: string[]; quantity?: number }) => {
+  const addProduct = async (data: { title: string; description: string; category: string; price: number; images?: string[]; condition?: string; tags?: string[]; quantity?: number; details?: any; extras?: any; workingCondition?: string }) => {
     try {
       const payload: any = {
         title: data.title,
@@ -231,16 +231,32 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         category: data.category,
         price: data.price,
         condition: data.condition,
-        tags: data.tags
+        tags: data.tags,
+        details: data.details,
+        extras: data.extras,
+        workingCondition: data.workingCondition
       };
       if (data.images && data.images.length) payload.images = data.images;
-      else if (data.image) payload.image = data.image;
       if (typeof data.quantity === 'number') payload.quantity = data.quantity;
-      const res = await api.post('/api/products', payload);
+      if (import.meta.env.VITE_DEBUG === '1') {
+        console.debug('[API_ADD_PRODUCT_REQUEST]', payload);
+      }
+      const res = await api.post('/api/products', payload).catch(err => {
+        if (import.meta.env.VITE_DEBUG === '1') {
+          console.error('[API_ADD_PRODUCT_ERROR]', err?.response?.status, err?.response?.data);
+        }
+        throw err;
+      });
+      if (import.meta.env.VITE_DEBUG === '1') {
+        console.debug('[API_ADD_PRODUCT_RESPONSE]', res.status, res.data?._id || res.data?.id);
+      }
       const mapped = mapBackendProduct(res.data);
       setProducts(prev => [mapped, ...prev]);
       return true;
     } catch (e) {
+      if (import.meta.env.VITE_DEBUG === '1') {
+        console.error('[ADD_PRODUCT_FAIL]', e);
+      }
       return false;
     }
   };
